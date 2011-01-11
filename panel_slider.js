@@ -7,16 +7,19 @@
     
     //Global panelSliderOptions for the plugin allow for user to specify classes and settings
     panelSliderOptions = $.extend({
-      sliderId:      'content_track',
-      panelClass:       'content_panel',
-      currentClass:     'current_panel',
-      temporaryClass:   'temp_panel',
-      fadeClass:        'fade_panel',
+      sliderId:         'contentTrack',
+      panelClass:       'contentPanel',
+      currentClass:     'currentPanel',
+      temporaryClass:   'tempPanel',
+      fadeClass:        'fadePanel',
       dynamicHeight:    true,
       dynamicMargins:   true,
       wrapAround:       false,
       displayButtons:   'none',
-      buttonWrapperID:  'sliderButtonWrapper'
+      buttonWrapperID:  'sliderButtonWrapper',
+      slideDuration:    750, 
+      fadeDuration:     750,
+      scrollDelay:      200
     }, optionalArgs);
     
     //If the slider's class matches the current element, we use it as our slider
@@ -37,11 +40,16 @@
       var panel = $(this);
       contentTrack.addPanel(panel);
     });
-    contentTrack.find('div:first').addClass(panelSliderOptions.currentClass).css('display', 'block');
+    
+    var initialPanel;
+    if (panelSliderOptions.initialDisplayId) initialPanel = contentTrack.find('#' + panelSliderOptions.initialDisplayId);
+    else initialPanel = contentTrack.find('div:first');
+    
+    if ($('.' + panelSliderOptions.panelClass).index(initialPanel) == -1) initialPanel = contentTrack.find('div:first');
+    initialPanel.addClass(panelSliderOptions.currentClass).css('display', 'block');
     
     //Dynamic margins will force elements to stay centered 
     if (panelSliderOptions.dynamicMargins)
-    {
       //Wire up the browser to fire off our resize function
       $(window).resize(function() {
         $('.' + panelSliderOptions.panelClass, contentTrack).each(function(){
@@ -49,12 +57,9 @@
         });
         updateWidth();
       });
-    }
     
     if (panelSliderOptions.displayButtons != 'none')
-    {
       addButtons(contentTrack.find('.' + panelSliderOptions.currentClass));
-    }
     
     return contentTrack;
   };
@@ -138,9 +143,9 @@
       var targetPanel = contentTrack.find('#' + destination);
       var currentIndex = $('.' + panelSliderOptions.panelClass).index(slidePanel);
       var targetIndex = $('.' + panelSliderOptions.panelClass).index(targetPanel);
-      
+
       //If we are already on the requested panel, or the requested panel does not exist, return without doing anything
-      if (currentIndex == targetIndex || !targetPanel)
+      if (currentIndex == targetIndex || targetIndex == -1)
       {
         contentTrack.css('width', width);
         return contentTrack;
@@ -162,7 +167,7 @@
     {
       //If the user specifies a region to animate in place of the panel, take that into account for animation
       panelContents = slidePanel;
-      for (index in panelSliderOptions.contentClass)
+      for (var index = 0; index < panelSliderOptions.contentClass.length; index++)
       {
         var className = panelSliderOptions.contentClass[index];
         if ($('.' + className, slidePanel)[0])
@@ -179,7 +184,7 @@
     
     offset *= destination == 'next' ? -1 : 1;
     offset = '+=' + offset;
-    contentTrack.animate({marginLeft: offset}, function()
+    contentTrack.animate({marginLeft: offset}, panelSliderOptions.slideDuration, function()
     {
       //Reset the div ordering if the divs were moved for wrapping
       if (revert == 'first')
@@ -193,14 +198,15 @@
       contentTrack.css('min-width', width);
       $('.' + panelSliderOptions.temporaryClass).css('display', 'none').removeClass(panelSliderOptions.temporaryClass);
       
+      $('html, body').delay(panelSliderOptions.scrollDelay).animate({scrollTop:0}, panelSliderOptions.slideDuration);
       //Animate the panel's height and fade in the new content if we are using dynamic height settings
       if (panelSliderOptions.dynamicHeight)
       {
-        $('html, body').animate({scrollTop:0}, 'slow');
-        panelContents.animate({height: newPanelHeight}, function()
+        var overflowSetting = panelContents.css('overflow'); //Animate height changes overflow to hidden; we change it back.
+        panelContents.animate({height: newPanelHeight}, panelSliderOptions.slideDuration, function()
         {
           if (callback) callback();
-          fadePanel = panelContents.find('.' + panelSliderOptions.fadeClass).fadeIn('slow', function()
+          fadePanel = panelContents.find('.' + panelSliderOptions.fadeClass).fadeIn(panelSliderOptions.fadeDuration, function()
           {
             fadePanel.replaceWith(fadePanel.contents());
             panelContents.css('height', 'auto');
@@ -209,10 +215,11 @@
           if (showButtonsOnPanel(slidePanel))
             addButtons(slidePanel);
           if(showNextButtonOnPanel(slidePanel))
-            $('.' + panelSliderOptions.nextButton).fadeIn('slow');
+            $('.' + panelSliderOptions.nextButton).fadeIn(panelSliderOptions.fadeDuration);
           if(showPrevButtonOnPanel(slidePanel))
-            $('.' + panelSliderOptions.prevButton).fadeIn('slow');
-        });
+            $('.' + panelSliderOptions.prevButton).fadeIn(panelSliderOptions.fadeDuration);
+          updateMargins(slidePanel);
+        }).css('overflow', overflowSetting);
       }
       else if (callback) callback();
     });
@@ -290,13 +297,13 @@
     container.prepend(lastPanel);
   }
   
+  //Returns true if the requested panel is the panel currently being displayed
   function isCurrentPanel(panel)
   {
-    var currentIndex = $('.' + panelSliderOptions.currentClass).index('.' + panelSliderOptions.panelClass);
-    var thisIndex = panel.index('.' + panelSliderOptions.panelClass);
-    return (currentIndex == thisIndex);
+    return panel.hasClass(panelSliderOptions.currentClass);
   }
   
+  //Appends buttons to the requested panel, depending on the requested display settings
   function addButtons(panel)
   {
     var contentTrack = $('#' + panelSliderOptions.sliderId);
@@ -338,6 +345,7 @@
     updateButtonPositions(panel);
   }
   
+  //Updates the positions of any buttons that have been added
   function updateButtonPositions(panel)
   {
     var contentTrack = $('#' + panelSliderOptions.sliderId);
@@ -355,6 +363,7 @@
     }
   }
   
+  //Updates the specified button's location to sit to the left or right of the panel, depending on location's value
   function updateButtonPosition(panel, button, location)
   {
     var display = button.css('display');
@@ -365,6 +374,7 @@
     else button.css({'right': offset, 'display': display});
   }
   
+  //Returns true if any buttons should be displayed on the indicated panel; false, otherwise
   function showButtonsOnPanel(panel)
   {
     if (showPrevButtonOnPanel(panel) || showNextButtonOnPanel(panel))
@@ -372,6 +382,7 @@
     return false;
   }
   
+  //Returns true if the "next" button should be displayed on the indicated panel; false, otherwise
   function showNextButtonOnPanel(panel)
   {
     var contentTrack = $('#' + panelSliderOptions.sliderId);
@@ -381,6 +392,7 @@
     return false;
   }
   
+  //Returns true if the "previous" button should be displayed on the indicated panel; false, otherwise
   function showPrevButtonOnPanel(panel)
   {
     var contentTrack = $('#' + panelSliderOptions.sliderId);
